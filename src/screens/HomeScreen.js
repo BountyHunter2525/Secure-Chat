@@ -1,8 +1,11 @@
 import { View, Text, Button } from 'react-native';
-import { useState } from 'react';
+import { signOut } from '../services/authService';
 
-export default function HomeScreen() {
-  const [count, setCount] = useState(0);
+export default function HomeScreen({ navigation }) {
+  const handleLogout = async () => {
+    await signOut();
+    navigation.replace('Login');
+  };
 
   return (
     <View
@@ -10,13 +13,22 @@ export default function HomeScreen() {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        padding: 20,
       }}
     >
-      <Text>SecureChat Counter: {count}</Text>
+      <Text
+        style={{
+          fontSize: 28,
+          fontWeight: 'bold',
+          marginBottom: 20,
+        }}
+      >
+        Welcome to SecureChat
+      </Text>
 
       <Button
-        title="Increase"
-        onPress={() => setCount(count + 5)}
+        title="Logout"
+        onPress={handleLogout}
       />
     </View>
   );
