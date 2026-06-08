@@ -25,11 +25,19 @@ export default function HomeScreen({ navigation }) {
       >
         Welcome to SecureChat
       </Text>
+<View style={{ marginBottom: 20 }}>
+  <Button
+    title="Chats"
+    onPress={() =>
+      navigation.navigate('Chats')
+    }
+  />
+</View>
 
-      <Button
-        title="Logout"
-        onPress={handleLogout}
-      />
+<Button
+  title="Logout"
+  onPress={handleLogout}
+/>
     </View>
   );
 }
