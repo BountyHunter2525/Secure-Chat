@@ -33,33 +33,72 @@ export default function UsersScreen({
 
     setUsers(data || []);
   };
+const startChat = async (
+  selectedUser
+) => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const startChat = async (
-    selectedUser
-  ) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  if (!user) return;
 
-    const {
-      data: conversation,
-      error: conversationError,
-    } = await supabase
-      .from('conversations')
-      .insert([
-        {
-          name: `${selectedUser.username}`,
-          is_group: false,
-        },
-      ])
-      .select()
-      .single();
+  const user1 =
+    user.id < selectedUser.id
+      ? user.id
+      : selectedUser.id;
 
-    if (conversationError) {
-      console.log(conversationError);
-      return;
-    }
+  const user2 =
+    user.id < selectedUser.id
+      ? selectedUser.id
+      : user.id;
 
+  const {
+    data: existingChat,
+    error: existingError,
+  } = await supabase
+    .from('direct_chats')
+    .select('conversation_id')
+    .eq('user1_id', user1)
+    .eq('user2_id', user2)
+    .maybeSingle();
+
+  if (existingError) {
+    console.log(existingError);
+    return;
+  }
+
+  if (existingChat) {
+    navigation.navigate('Chat', {
+      conversationId:
+        existingChat.conversation_id,
+      chatName:
+        selectedUser.username,
+    });
+
+    return;
+  }
+
+  const {
+    data: conversation,
+    error: conversationError,
+  } = await supabase
+    .from('conversations')
+    .insert([
+      {
+        name:
+          selectedUser.username,
+        is_group: false,
+      },
+    ])
+    .select()
+    .single();
+
+  if (conversationError) {
+    console.log(conversationError);
+    return;
+  }
+
+  const { error: participantError } =
     await supabase
       .from('participants')
       .insert([
@@ -71,17 +110,40 @@ export default function UsersScreen({
         {
           conversation_id:
             conversation.id,
-          user_id: selectedUser.id,
+          user_id:
+            selectedUser.id,
         },
       ]);
 
-    navigation.navigate('Chat', {
-      conversationId:
-        conversation.id,
-      chatName:
-        selectedUser.username,
-    });
-  };
+  if (participantError) {
+    console.log(participantError);
+    return;
+  }
+
+  const { error: directChatError } =
+    await supabase
+      .from('direct_chats')
+      .insert([
+        {
+          user1_id: user1,
+          user2_id: user2,
+          conversation_id:
+            conversation.id,
+        },
+      ]);
+
+  if (directChatError) {
+    console.log(directChatError);
+    return;
+  }
+
+  navigation.navigate('Chat', {
+    conversationId:
+      conversation.id,
+    chatName:
+      selectedUser.username,
+  });
+};
 
   return (
     <View
