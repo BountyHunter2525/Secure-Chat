@@ -57,15 +57,13 @@ const handleSignup = async () => {
       ]);
 
   if (profileError) {
-  console.log(profileError);
+    Alert.alert(
+      'Profile Error',
+      JSON.stringify(profileError)
+    );
 
-  Alert.alert(
-    'Profile Error',
-    JSON.stringify(profileError)
-  );
-
-  return;
-}
+    return;
+  }
 
   Alert.alert(
     'Success',

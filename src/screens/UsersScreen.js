@@ -27,7 +27,7 @@ export default function UsersScreen({
       .neq('id', user.id);
 
     if (error) {
-      console.log(error);
+      // error loading users
       return;
     }
 
@@ -63,7 +63,7 @@ const startChat = async (
     .maybeSingle();
 
   if (existingError) {
-    console.log(existingError);
+    // error checking existing direct chat
     return;
   }
 
@@ -94,7 +94,7 @@ const startChat = async (
     .single();
 
   if (conversationError) {
-    console.log(conversationError);
+    // error creating conversation
     return;
   }
 
@@ -116,7 +116,7 @@ const startChat = async (
       ]);
 
   if (participantError) {
-    console.log(participantError);
+    // error inserting participants
     return;
   }
 
@@ -133,7 +133,7 @@ const startChat = async (
       ]);
 
   if (directChatError) {
-    console.log(directChatError);
+    // error inserting direct chat record
     return;
   }
 

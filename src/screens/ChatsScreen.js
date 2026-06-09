@@ -5,146 +5,273 @@ import {
   Button,
   FlatList,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { supabase } from '../config/supabase';
 
 export default function ChatsScreen({ navigation }) {
   const [chats, setChats] = useState([]);
-
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    loadChats();
-  }, []);
+  loadChats();
 
-  const loadChats = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const channel = supabase
+    .channel('chat-list')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+      },
+      () => {
+        loadChats();
+      }
+    )
+    .subscribe();
 
-    if (!user) return;
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+const loadChats = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
+  if (!user) return;
+  setLoading(true);
+
+  const { data: participants, error } =
+    await supabase
       .from('participants')
       .select(`
         conversation_id,
         conversations (
           id,
           name,
-          created_at
+          updated_at
         )
       `)
       .eq('user_id', user.id);
 
-    if (error) {
-      console.log(error);
-      return;
+  if (error) {
+    // error handled by returning early
+    return;
+  }
+
+const chatData = await Promise.all(
+  participants.map(
+    async (participant) => {
+      const conversation =
+        participant.conversations;
+
+      const { data: users } =
+        await supabase
+          .from('participants')
+          .select('user_id')
+          .eq(
+            'conversation_id',
+            conversation.id
+          );
+
+      const otherUser =
+        users?.find(
+          (u) =>
+            u.user_id !== user.id
+        );
+
+      let profile = null;
+
+      if (otherUser) {
+        const result =
+          await supabase
+            .from('profiles')
+            .select(
+              'username, avatar_url'
+            )
+            .eq(
+              'id',
+              otherUser.user_id
+            )
+            .single();
+
+        profile = result.data;
+      }
+
+      const {
+        data: lastMessage,
+      } = await supabase
+        .from('messages')
+        .select(
+          'content, created_at'
+        )
+        .eq(
+          'conversation_id',
+          conversation.id
+        )
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      return {
+        id: conversation.id,
+
+        name:
+          profile?.username ||
+          conversation.name,
+
+        avatar:
+          profile?.avatar_url
+            ? `${profile.avatar_url}?t=${Date.now()}`
+            : null,
+
+        lastMessage:
+          lastMessage?.content ||
+          'No messages yet',
+
+        lastMessageTime:
+          lastMessage?.created_at ||
+          null,
+
+        updated_at:
+          conversation.updated_at,
+      };
     }
+  )
+);
 
-    setChats(data || []);
-  };
+chatData.sort(
+  (a, b) =>
+    new Date(
+      b.updated_at || 0
+    ) -
+    new Date(
+      a.updated_at || 0
+    )
+);
 
-  const createChat = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const {
-      data: conversation,
-      error: conversationError,
-    } = await supabase
-      .from('conversations')
-      .insert([
-        {
-          name: 'Test Chat',
-          is_group: false,
-        },
-      ])
-      .select()
-      .single();
-
-    if (conversationError) {
-      console.log(conversationError);
-      return;
-    }
-
-    const { error: participantError } =
-      await supabase
-        .from('participants')
-        .insert([
-          {
-            conversation_id: conversation.id,
-            user_id: user.id,
-          },
-        ]);
-
-    if (participantError) {
-      console.log(participantError);
-      return;
-    }
-
-    loadChats();
-  };
-
+setChats(chatData);
+setLoading(false);};
+if (loading) {
   return (
     <View
       style={{
         flex: 1,
-        padding: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
       }}
-      
     >
-      <Button
-  title="New Chat"
-  onPress={() =>
-    navigation.navigate('Users')
-  }
-/>
-<View style={{ height: 10 }} />
-      <Button
-        title="Create Test Chat"
-        onPress={createChat}
-      />
+      <Text>Loading...</Text>
+    </View>
+  );
+}
+return (
+  <View
+    style={{
+      flex: 1,
+      padding: 20,
+    }}
+  >
+    <Button
+      title="New Chat"
+      onPress={() =>
+        navigation.navigate('Users')
+      }
+    />
+    <FlatList
+  data={chats}
+  keyExtractor={(item) => item.id}
+  renderItem={({ item }) => (
+    <TouchableOpacity
+      onPress={() =>
+        navigation.navigate('Chat', {
+          conversationId: item.id,
+          chatName: item.name,
+        })
+      }
+      style={{
+        padding: 15,
+        borderBottomWidth: 1,
+        borderColor: '#ddd',
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}
+      >
+        {item.avatar ? (
+  <Image
+    source={{
+      uri: item.avatar,
+    }}
+    style={{
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      marginRight: 12,
+    }}
+  />
+) : (
+  <View
+    style={{
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: '#ddd',
+      marginRight: 12,
+    }}
+  />
+)}
 
-      <FlatList
-        data={chats}
-        keyExtractor={(item) =>
-          item.conversation_id
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('Chat', {
-                conversationId:
-                  item.conversations.id,
-                chatName:
-                  item.conversations.name,
-              })
-            }
+        <View
+          style={{
+            flex: 1,
+          }}
+        >
+          <Text
             style={{
-              padding: 15,
-              borderWidth: 1,
-              borderRadius: 10,
-              marginTop: 10,
+              fontSize: 18,
+              fontWeight: 'bold',
             }}
           >
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: 'bold',
-              }}
-            >
-              {item.conversations.name}
-            </Text>
+            {item.name}
+          </Text>
 
-            <Text>
-              {new Date(
-                item.conversations.created_at
-              ).toLocaleString()}
-            </Text>
-          </TouchableOpacity>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: 'gray',
+              marginTop: 3,
+            }}
+          >
+            {item.lastMessage}
+          </Text>
+        </View>
+
+        {item.lastMessageTime && (
+          <Text
+            style={{
+              fontSize: 12,
+              color: 'gray',
+            }}
+          >
+            {new Date(
+              item.lastMessageTime
+            ).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </Text>
         )}
-      />
-    </View>
+      </View>
+    </TouchableOpacity>
+  )}
+/>
+  </View>
   );
 }
