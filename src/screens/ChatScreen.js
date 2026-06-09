@@ -8,7 +8,7 @@ import {
   Image,
 } from 'react-native';
 import { supabase } from '../config/supabase';
-import {KeyboardAvoidingView,Platform,} from 'react-native';
+import { KeyboardAvoidingView, Platform, } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ChatScreen({ route }) {
@@ -19,7 +19,7 @@ export default function ChatScreen({ route }) {
   const [message, setMessage] = useState('');
   const [currentUserId, setCurrentUserId] = useState('');
   const [userStatus, setUserStatus] = useState('');
-  
+
   const flatListRef = useRef(null);
 
   useEffect(() => {
@@ -28,6 +28,7 @@ export default function ChatScreen({ route }) {
     loadStatus();
     loadAvatar();
     loadChatName();
+    markMessagesAsRead();
     const statusInterval = setInterval(
       loadStatus,
       5000
@@ -37,13 +38,14 @@ export default function ChatScreen({ route }) {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
         () => {
           loadMessages();
+          markMessagesAsRead();
         }
       )
       .subscribe();
@@ -53,32 +55,32 @@ export default function ChatScreen({ route }) {
       supabase.removeChannel(channel);
     };
   }, []);
-const loadChatName = async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const loadChatName = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+   
+    const { data: participants } = await supabase
+      .from('participants')
+      .select('user_id')
+      .eq('conversation_id', conversationId);
 
-  const { data: participants } = await supabase
-    .from('participants')
-    .select('user_id')
-    .eq('conversation_id', conversationId);
+    const otherUser = participants.find(
+      p => p.user_id !== user.id
+    );
 
-  const otherUser = participants.find(
-    p => p.user_id !== user.id
-  );
+    if (!otherUser) return;
 
-  if (!otherUser) return;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('id', otherUser.user_id)
+      .single();
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('username')
-    .eq('id', otherUser.user_id)
-    .single();
-
-  if (profile) {
-    setDisplayName(profile.username);
-  }
-};
+    if (profile) {
+      setDisplayName(profile.username);
+    }
+  };
   const loadCurrentUser = async () => {
     const {
       data: { user },
@@ -124,17 +126,62 @@ const loadChatName = async () => {
     setMessages(data || []);
   };
   const loadAvatar = async () => {
-  const { data } = await supabase
-    .from('profiles')
-    .select('avatar_url')
-    .eq('username', displayName)
-    .single();
+    const { data } = await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('username', displayName)
+      .single();
 
-  if (data?.avatar_url) {
-    setAvatarUrl(
-  `${data.avatar_url}?t=${Date.now()}`
-);
-  }
+    if (data?.avatar_url) {
+      setAvatarUrl(
+        `${data.avatar_url}?t=${Date.now()}`
+      );
+    }
+  };
+  const markMessagesAsRead = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  console.log('CURRENT USER:', user.id);
+  console.log('CONVERSATION:', conversationId);
+
+  const { data: messages } =
+    await supabase
+      .from('messages')
+      .select('*')
+      .eq(
+        'conversation_id',
+        conversationId
+      );
+
+  console.log(
+    'MESSAGES:',
+    messages
+  );
+
+  const { data, error } =
+    await supabase
+      .from('messages')
+      .update({
+        is_read: true,
+      })
+      .eq(
+        'conversation_id',
+        conversationId
+      )
+      .neq(
+        'sender_id',
+        user.id
+      )
+      .eq(
+        'is_read',
+        false
+      )
+      .select();
+
+  console.log('READ UPDATE:', data);
+  console.log('READ ERROR:', error);
 };
   const sendMessage = async () => {
     if (!message.trim()) return;
@@ -163,182 +210,205 @@ const loadChatName = async () => {
     setMessage('');
   };
   useEffect(() => {
-  if (displayName) {
-    loadAvatar();
-  }
-}, [displayName]);
-return (
-  <SafeAreaView
-  style={{
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  }}
-  
->
-    
-    <View
-  style={{
-    padding: 15,
-    borderBottomWidth: 1,
-    backgroundColor: 'white',
-    flexDirection: 'row',
-    alignItems: 'center',
-  }}
->
-  {avatarUrl ? (
-  <Image
-    source={{
-      uri: avatarUrl,
-    }}
-    style={{
-      width: 45,
-      height: 45,
-      borderRadius: 22.5,
-      marginRight: 12,
-    }}
-  />
-) : (
-    <View
+    if (displayName) {
+      loadAvatar();
+    }
+  }, [displayName]);
+  return (
+    <SafeAreaView
       style={{
-        width: 45,
-        height: 45,
-        borderRadius: 22.5,
-        backgroundColor: '#ddd',
-        marginRight: 12,
+        flex: 1,
+        backgroundColor: '#f5f5f5',
       }}
-    />
-  )}
 
-  <View>
-    <Text
-      style={{
-        fontSize: 20,
-        fontWeight: 'bold',
-      }}
     >
-      {displayName}
-    </Text>
 
-    <Text
-      style={{
-        color: 'gray',
-        marginTop: 2,
-      }}
-    >
-      {userStatus}
-    </Text>
-  </View>
-</View>
-
-    <FlatList
-    showsVerticalScrollIndicator={true}
-      ref={flatListRef}
-      data={messages}
-      onLayout={() =>
-  flatListRef.current?.scrollToEnd({
-    animated: false,
-  })
-}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={{
-        padding: 10,
-      }}
-      onContentSizeChange={() =>
-        flatListRef.current?.scrollToEnd({
-          animated: true,
-        })
-      }
-      renderItem={({ item }) => {
-        const isMine =
-          item.sender_id === currentUserId;
-
-        return (
-          <View
-            style={{
-              alignItems: isMine
-                ? 'flex-end'
-                : 'flex-start',
-              marginBottom: 10,
-            }}
-          >
-            <View
-              style={{
-                maxWidth: '80%',
-                padding: 12,
-                borderRadius: 15,
-                backgroundColor: isMine
-                  ? '#DCF8C6'
-                  : 'white',
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                }}
-              >
-                {item.content}
-              </Text>
-
-              <Text
-                style={{
-                  fontSize: 10,
-                  color: 'gray',
-                  marginTop: 5,
-                  alignSelf: 'flex-end',
-                }}
-              >
-                {new Date(
-                  item.created_at
-                ).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </Text>
-            </View>
-          </View>
-        );
-      }}
-    />
-
-    <KeyboardAvoidingView
-      behavior={
-        Platform.OS === 'ios'
-          ? 'padding'
-          : 'height'
-      }
-    >
       <View
         style={{
+          padding: 15,
+          borderBottomWidth: 1,
+          backgroundColor: 'white',
           flexDirection: 'row',
           alignItems: 'center',
-          padding: 10,
-          paddingBottom: 25,
-          backgroundColor: 'white',
-          borderTopWidth: 1,
         }}
       >
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Type a message..."
-          style={{
-            flex: 1,
-            borderWidth: 1,
-            borderRadius: 25,
-            paddingHorizontal: 15,
-            paddingVertical: 10,
-            marginRight: 10,
-            backgroundColor: 'white',
-          }}
-        />
+        {avatarUrl ? (
+          <Image
+            source={{
+              uri: avatarUrl,
+            }}
+            style={{
+              width: 45,
+              height: 45,
+              borderRadius: 22.5,
+              marginRight: 12,
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 45,
+              height: 45,
+              borderRadius: 22.5,
+              backgroundColor: '#ddd',
+              marginRight: 12,
+            }}
+          />
+        )}
 
-        <Button
-          title="Send"
-          onPress={sendMessage}
-        />
+        <View>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: 'bold',
+            }}
+          >
+            {displayName}
+          </Text>
+
+          <Text
+            style={{
+              color: 'gray',
+              marginTop: 2,
+            }}
+          >
+            {userStatus}
+          </Text>
+        </View>
       </View>
-    </KeyboardAvoidingView>
+
+      <FlatList
+        showsVerticalScrollIndicator={true}
+        ref={flatListRef}
+        data={messages}
+        onLayout={() =>
+          flatListRef.current?.scrollToEnd({
+            animated: false,
+          })
+        }
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{
+          padding: 10,
+        }}
+        onContentSizeChange={() =>
+          flatListRef.current?.scrollToEnd({
+            animated: true,
+          })
+        }
+        renderItem={({ item }) => {
+          const isMine =
+            item.sender_id === currentUserId;
+
+          return (
+            <View
+              style={{
+                alignItems: isMine
+                  ? 'flex-end'
+                  : 'flex-start',
+                marginBottom: 10,
+              }}
+            >
+              <View
+                style={{
+                  maxWidth: '80%',
+                  padding: 12,
+                  borderRadius: 15,
+                  backgroundColor: isMine
+                    ? '#DCF8C6'
+                    : 'white',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 16,
+                  }}
+                >
+                  {item.content}
+                </Text>
+
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignSelf: 'flex-end',
+                    marginTop: 5,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color: 'gray',
+                      marginRight: 5,
+                    }}
+                  >
+                    {new Date(
+                      item.created_at
+                    ).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+
+                  {isMine && (
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: item.is_read
+                          ? '#2196F3'
+                          : 'gray',
+                      }}
+                    >
+                      {item.is_read
+                        ? '✓✓'
+                        : '✓'}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      <KeyboardAvoidingView
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : 'height'
+        }
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            padding: 10,
+            paddingBottom: 25,
+            backgroundColor: 'white',
+            borderTopWidth: 1,
+          }}
+        >
+          <TextInput
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Type a message..."
+            style={{
+              flex: 1,
+              borderWidth: 1,
+              borderRadius: 25,
+              paddingHorizontal: 15,
+              paddingVertical: 10,
+              marginRight: 10,
+              backgroundColor: 'white',
+            }}
+          />
+
+          <Button
+            title="Send"
+            onPress={sendMessage}
+          />
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
-  
-);
+
+  );
 }

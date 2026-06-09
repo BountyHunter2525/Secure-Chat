@@ -19,38 +19,28 @@ export default function ProfileScreen() {
     loadProfile();
   }, []);
 
-  const loadProfile = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+const loadProfile = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (!user) return;
+  if (!user) return;
 
-    const { data, error } =
-      await supabase
-        .from('profiles')
-        .select('avatar_url')
-        .eq('id', user.id)
-        .single();
+  const { data, error } =
+    await supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', user.id)
+      .single();
 
-    if (error) {
-      // error loading profile
-      return;
-    }
+  if (data?.avatar_url) {
+    setAvatarUrl(
+      `${data.avatar_url}?t=${Date.now()}`
+    );
+  }
+};
 
-    if (data?.avatar_url) {
-  setAvatarUrl(
-  `${publicUrl}?t=${Date.now()}`
-);
 
-await loadProfile();
-
-Alert.alert(
-  'Success',
-  'Profile picture updated'
-);
-}
-  };
 
   const pickImage = async () => {
     try {
