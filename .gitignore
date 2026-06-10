@@ -2,7 +2,7 @@
 
 # dependencies
 node_modules/
-
+.env/
 # Expo
 .expo/
 dist/
@@ -42,3 +42,7 @@ yarn-error.*
 
 //Email: test@example.com
 //Password: SecureChat123
+
+
+.env
+.env.local

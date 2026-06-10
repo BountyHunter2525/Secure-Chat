@@ -115,30 +115,51 @@ const chatData = await Promise.all(
         })
         .limit(1)
         .maybeSingle();
-
+const { count: unreadCount } =
+  await supabase
+    .from('messages')
+    .select('*', {
+      count: 'exact',
+      head: true,
+    })
+    .eq(
+      'conversation_id',
+      conversation.id
+    )
+    .neq(
+      'sender_id',
+      user.id
+    )
+    .eq(
+      'is_read',
+      false
+    );
       return {
-        id: conversation.id,
+  id: conversation.id,
 
-        name:
-          profile?.username ||
-          conversation.name,
+  name:
+    profile?.username ||
+    conversation.name,
 
-        avatar:
-          profile?.avatar_url
-            ? `${profile.avatar_url}?t=${Date.now()}`
-            : null,
+  avatar:
+    profile?.avatar_url
+      ? `${profile.avatar_url}?t=${Date.now()}`
+      : null,
 
-        lastMessage:
-          lastMessage?.content ||
-          'No messages yet',
+  unreadCount:
+    unreadCount || 0,
 
-        lastMessageTime:
-          lastMessage?.created_at ||
-          null,
+  lastMessage:
+    lastMessage?.content ||
+    'No messages yet',
 
-        updated_at:
-          conversation.updated_at,
-      };
+  lastMessageTime:
+    lastMessage?.created_at ||
+    null,
+
+  updated_at:
+    conversation.updated_at,
+};
     }
   )
 );
@@ -251,6 +272,31 @@ return (
           >
             {item.lastMessage}
           </Text>
+          {item.unreadCount > 0 && (
+  <View
+    style={{
+      backgroundColor:
+        '#25D366',
+      minWidth: 22,
+      height: 22,
+      borderRadius: 11,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 5,
+      alignSelf: 'flex-start',
+    }}
+  >
+    <Text
+      style={{
+        color: 'white',
+        fontSize: 12,
+        fontWeight: 'bold',
+      }}
+    >
+      {item.unreadCount}
+    </Text>
+  </View>
+)}
         </View>
 
         {item.lastMessageTime && (

@@ -17,6 +17,7 @@ export default function ChatScreen({ route }) {
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
   const [userStatus, setUserStatus] = useState('');
 
@@ -59,7 +60,7 @@ export default function ChatScreen({ route }) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-   
+
     const { data: participants } = await supabase
       .from('participants')
       .select('user_id')
@@ -139,75 +140,86 @@ export default function ChatScreen({ route }) {
     }
   };
   const markMessagesAsRead = async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  console.log('CURRENT USER:', user.id);
-  console.log('CONVERSATION:', conversationId);
-
-  const { data: messages } =
-    await supabase
-      .from('messages')
-      .select('*')
-      .eq(
-        'conversation_id',
-        conversationId
-      );
-
-  console.log(
-    'MESSAGES:',
-    messages
-  );
-
-  const { data, error } =
-    await supabase
-      .from('messages')
-      .update({
-        is_read: true,
-      })
-      .eq(
-        'conversation_id',
-        conversationId
-      )
-      .neq(
-        'sender_id',
-        user.id
-      )
-      .eq(
-        'is_read',
-        false
-      )
-      .select();
-
-  console.log('READ UPDATE:', data);
-  console.log('READ ERROR:', error);
-};
-  const sendMessage = async () => {
-    if (!message.trim()) return;
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
 
-    const { error } = await supabase
-      .from('messages')
-      .insert([
-        {
-          conversation_id: conversationId,
-          sender_id: user.id,
-          content: message,
-        },
-      ]);
 
-    if (error) {
-      // error sending message
+    const { data: messages } =
+      await supabase
+        .from('messages')
+        .select('*')
+        .eq(
+          'conversation_id',
+          conversationId
+        );
+
+    const { data, error } =
+      await supabase
+        .from('messages')
+        .update({
+          is_read: true,
+        })
+        .eq(
+          'conversation_id',
+          conversationId
+        )
+        .neq(
+          'sender_id',
+          user.id
+        )
+        .eq(
+          'is_read',
+          false
+        )
+        .select();
+
+
+  };
+  const sendMessage = async () => {
+    if (
+      !message.trim() ||
+      sending
+    )
       return;
-    }
 
-    setMessage('');
+    setSending(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setSending(false);
+        return;
+      }
+
+      const messageText =
+        message.trim();
+
+      setMessage('');
+
+      const { error } =
+        await supabase
+          .from('messages')
+          .insert([
+            {
+              conversation_id:
+                conversationId,
+              sender_id: user.id,
+              content:
+                messageText,
+            },
+          ]);
+
+      if (error) {
+        console.log(error);
+      }
+    } finally {
+      setSending(false);
+    }
   };
   useEffect(() => {
     if (displayName) {
@@ -403,8 +415,13 @@ export default function ChatScreen({ route }) {
           />
 
           <Button
-            title="Send"
+            title={
+              sending
+                ? 'Sending...'
+                : 'Send'
+            }
             onPress={sendMessage}
+            disabled={sending}
           />
         </View>
       </KeyboardAvoidingView>
