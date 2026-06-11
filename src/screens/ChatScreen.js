@@ -15,6 +15,8 @@ export default function ChatScreen({ route }) {
   const { conversationId, chatName } = route.params;
   const [displayName, setDisplayName] = useState(chatName);
   const [avatarUrl, setAvatarUrl] = useState(null);
+  const [participantCount, setParticipantCount] = useState(0);
+  const [isGroup, setIsGroup] = useState(false);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -30,6 +32,7 @@ export default function ChatScreen({ route }) {
     loadAvatar();
     loadChatName();
     markMessagesAsRead();
+    loadParticipantCount();
     const statusInterval = setInterval(
       loadStatus,
       5000
@@ -56,15 +59,60 @@ export default function ChatScreen({ route }) {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const loadParticipantCount =
+    async () => {
+      const { data: conversation } =
+        await supabase
+          .from('conversations')
+          .select('is_group')
+          .eq('id', conversationId)
+          .single();
+
+      if (
+        conversation?.is_group
+      ) {
+        setIsGroup(true);
+
+        const { count } =
+          await supabase
+            .from('participants')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'conversation_id',
+              conversationId
+            );
+
+        setParticipantCount(
+          count || 0
+        );
+      }
+    };
   const loadChatName = async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { data: participants } = await supabase
-      .from('participants')
-      .select('user_id')
-      .eq('conversation_id', conversationId);
+    const { data: conversation } =
+      await supabase
+        .from('conversations')
+        .select(
+          'name, is_group'
+        )
+        .eq('id', conversationId)
+        .single();
+
+    if (
+      conversation?.is_group
+    ) {
+      setDisplayName(
+        conversation.name
+      );
+      return;
+    }
 
     const otherUser = participants.find(
       p => p.user_id !== user.id
@@ -111,16 +159,25 @@ export default function ChatScreen({ route }) {
   };
 
   const loadMessages = async () => {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', {
-        ascending: true,
-      });
+    const { data, error } =
+      await supabase
+        .from('messages')
+        .select(`
+        *,
+        profiles!messages_sender_id_fkey (
+          username
+        )
+      `)
+        .eq(
+          'conversation_id',
+          conversationId
+        )
+        .order('created_at', {
+          ascending: true,
+        });
 
     if (error) {
-      // error loading messages
+      console.log(error);
       return;
     }
 
@@ -284,7 +341,9 @@ export default function ChatScreen({ route }) {
               marginTop: 2,
             }}
           >
-            {userStatus}
+            {isGroup
+              ? `${participantCount} participants`
+              : userStatus}
           </Text>
         </View>
       </View>
@@ -330,6 +389,18 @@ export default function ChatScreen({ route }) {
                     : 'white',
                 }}
               >
+                {isGroup && !isMine && (
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      color: '#2196F3',
+                      marginBottom: 4,
+                    }}
+                  >
+                    {item.profiles?.username}
+                  </Text>
+                )}
                 <Text
                   style={{
                     fontSize: 16,

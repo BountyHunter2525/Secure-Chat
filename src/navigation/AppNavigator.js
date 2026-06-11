@@ -8,6 +8,7 @@ import ChatsScreen from '../screens/ChatsScreen';
 import ChatScreen from '../screens/ChatScreen';
 import UsersScreen from '../screens/UsersScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import CreateGroupScreen from '../screens/CreateGroupScreen';
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -21,6 +22,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Chat" component={ChatScreen}/>
         <Stack.Screen name="Users" component={UsersScreen}/>
         <Stack.Screen name="Profile" component={ProfileScreen}/>
+        <Stack.Screen name="CreateGroup" component={CreateGroupScreen}/>
         <Stack.Screen name="AuthLoading" component={AuthLoadingScreen} options={{ headerShown: false }}/>
       </Stack.Navigator>
     </NavigationContainer>

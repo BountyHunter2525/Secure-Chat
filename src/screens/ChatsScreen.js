@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import {
   View,
@@ -13,311 +14,334 @@ export default function ChatsScreen({ navigation }) {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-  loadChats();
+    loadChats();
 
-  const channel = supabase
-    .channel('chat-list')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'messages',
-      },
-      () => {
-        loadChats();
-      }
-    )
-    .subscribe();
+    const channel = supabase
+      .channel('chat-list')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+        },
+        () => {
+          loadChats();
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []);
-const loadChats = async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+  const loadChats = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) return;
-  setLoading(true);
+    if (!user) return;
+    setLoading(true);
 
-  const { data: participants, error } =
-    await supabase
-      .from('participants')
-      .select(`
-        conversation_id,
-        conversations (
-          id,
-          name,
-          updated_at
-        )
-      `)
-      .eq('user_id', user.id);
+    const { data: participants, error } =
+      await supabase
+        .from('participants')
+        .select(`
+  conversation_id,
+  conversations (
+    id,
+    name,
+    is_group,
+    avatar_url,
+    updated_at
+  )
+`)
+        .eq('user_id', user.id);
 
-  if (error) {
-    // error handled by returning early
-    return;
-  }
+    if (error) {
+      // error handled by returning early
+      return;
+    }
 
-const chatData = await Promise.all(
-  participants.map(
-    async (participant) => {
-      const conversation =
-        participant.conversations;
+    const chatData = await Promise.all(
+      participants.map(
+        async (participant) => {
+          const conversation =
+            participant.conversations;
 
-      const { data: users } =
-        await supabase
-          .from('participants')
-          .select('user_id')
-          .eq(
-            'conversation_id',
-            conversation.id
-          );
+          const { data: users } =
+            await supabase
+              .from('participants')
+              .select('user_id')
+              .eq(
+                'conversation_id',
+                conversation.id
+              );
 
-      const otherUser =
-        users?.find(
-          (u) =>
-            u.user_id !== user.id
-        );
+          let chatName =
+            conversation.name;
 
-      let profile = null;
+          let chatAvatar =
+            conversation.avatar_url;
 
-      if (otherUser) {
-        const result =
-          await supabase
-            .from('profiles')
+          if (!conversation.is_group) {
+            const otherUser =
+              users?.find(
+                (u) =>
+                  u.user_id !== user.id
+              );
+
+            if (otherUser) {
+              const result =
+                await supabase
+                  .from('profiles')
+                  .select(
+                    'username, avatar_url'
+                  )
+                  .eq(
+                    'id',
+                    otherUser.user_id
+                  )
+                  .single();
+
+              if (result.data) {
+                chatName =
+                  result.data.username;
+
+                chatAvatar =
+                  result.data.avatar_url;
+              }
+            }
+          }
+
+          const {
+            data: lastMessage,
+          } = await supabase
+            .from('messages')
             .select(
-              'username, avatar_url'
+              'content, created_at'
             )
             .eq(
-              'id',
-              otherUser.user_id
+              'conversation_id',
+              conversation.id
             )
-            .single();
+            .order('created_at', {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle();
+          const { count: unreadCount } =
+            await supabase
+              .from('messages')
+              .select('*', {
+                count: 'exact',
+                head: true,
+              })
+              .eq(
+                'conversation_id',
+                conversation.id
+              )
+              .neq(
+                'sender_id',
+                user.id
+              )
+              .eq(
+                'is_read',
+                false
+              );
+          return {
+            id: conversation.id,
 
-        profile = result.data;
-      }
+            name: chatName,
 
-      const {
-        data: lastMessage,
-      } = await supabase
-        .from('messages')
-        .select(
-          'content, created_at'
-        )
-        .eq(
-          'conversation_id',
-          conversation.id
-        )
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
-const { count: unreadCount } =
-  await supabase
-    .from('messages')
-    .select('*', {
-      count: 'exact',
-      head: true,
-    })
-    .eq(
-      'conversation_id',
-      conversation.id
-    )
-    .neq(
-      'sender_id',
-      user.id
-    )
-    .eq(
-      'is_read',
-      false
+            avatar: chatAvatar
+              ? `${chatAvatar}?t=${Date.now()}`
+              : null,
+
+            is_group:
+              conversation.is_group,
+
+            unreadCount:
+              unreadCount || 0,
+
+            lastMessage:
+              lastMessage?.content ||
+              'No messages yet',
+
+            lastMessageTime:
+              lastMessage?.created_at ||
+              null,
+
+            updated_at:
+              conversation.updated_at,
+          };
+        }
+      )
     );
-      return {
-  id: conversation.id,
 
-  name:
-    profile?.username ||
-    conversation.name,
+    chatData.sort(
+      (a, b) =>
+        new Date(
+          b.updated_at || 0
+        ) -
+        new Date(
+          a.updated_at || 0
+        )
+    );
 
-  avatar:
-    profile?.avatar_url
-      ? `${profile.avatar_url}?t=${Date.now()}`
-      : null,
-
-  unreadCount:
-    unreadCount || 0,
-
-  lastMessage:
-    lastMessage?.content ||
-    'No messages yet',
-
-  lastMessageTime:
-    lastMessage?.created_at ||
-    null,
-
-  updated_at:
-    conversation.updated_at,
-};
-    }
-  )
-);
-
-chatData.sort(
-  (a, b) =>
-    new Date(
-      b.updated_at || 0
-    ) -
-    new Date(
-      a.updated_at || 0
-    )
-);
-
-setChats(chatData);
-setLoading(false);};
-if (loading) {
+    setChats(chatData);
+    setLoading(false);
+  };
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
   return (
     <View
       style={{
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+        padding: 20,
       }}
     >
-      <Text>Loading...</Text>
-    </View>
-  );
-}
-return (
-  <View
-    style={{
-      flex: 1,
-      padding: 20,
-    }}
-  >
-    <Button
-      title="New Chat"
-      onPress={() =>
-        navigation.navigate('Users')
-      }
-    />
-    <FlatList
-  data={chats}
-  keyExtractor={(item) => item.id}
-  renderItem={({ item }) => (
-    <TouchableOpacity
-      onPress={() =>
-        navigation.navigate('Chat', {
-          conversationId: item.id,
-          chatName: item.name,
-        })
-      }
-      style={{
-        padding: 15,
-        borderBottomWidth: 1,
-        borderColor: '#ddd',
-      }}
-    >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-        }}
-      >
-        {item.avatar ? (
-  <Image
-    source={{
-      uri: item.avatar,
-    }}
-    style={{
-      width: 50,
-      height: 50,
-      borderRadius: 25,
-      marginRight: 12,
-    }}
-  />
-) : (
-  <View
-    style={{
-      width: 50,
-      height: 50,
-      borderRadius: 25,
-      backgroundColor: '#ddd',
-      marginRight: 12,
-    }}
-  />
-)}
-
-        <View
-          style={{
-            flex: 1,
-          }}
-        >
-          <Text
+      <Button
+        title="New Chat"
+        onPress={() =>
+          navigation.navigate('Users')
+        }
+      />
+      <Button
+        title="New Group"
+        onPress={() =>
+          navigation.navigate(
+            'CreateGroup'
+          )
+        }
+      />
+      <FlatList
+        data={chats}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate('Chat', {
+                conversationId: item.id,
+                chatName: item.name,
+              })
+            }
             style={{
-              fontSize: 18,
-              fontWeight: 'bold',
+              padding: 15,
+              borderBottomWidth: 1,
+              borderColor: '#ddd',
             }}
           >
-            {item.name}
-          </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              {item.avatar ? (
+                <Image
+                  source={{
+                    uri: item.avatar,
+                  }}
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    marginRight: 12,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    backgroundColor: '#ddd',
+                    marginRight: 12,
+                  }}
+                />
+              )}
 
-          <Text
-            numberOfLines={1}
-            style={{
-              color: 'gray',
-              marginTop: 3,
-            }}
-          >
-            {item.lastMessage}
-          </Text>
-          {item.unreadCount > 0 && (
-  <View
-    style={{
-      backgroundColor:
-        '#25D366',
-      minWidth: 22,
-      height: 22,
-      borderRadius: 11,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 5,
-      alignSelf: 'flex-start',
-    }}
-  >
-    <Text
-      style={{
-        color: 'white',
-        fontSize: 12,
-        fontWeight: 'bold',
-      }}
-    >
-      {item.unreadCount}
-    </Text>
-  </View>
-)}
-        </View>
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {item.name}
+                </Text>
 
-        {item.lastMessageTime && (
-          <Text
-            style={{
-              fontSize: 12,
-              color: 'gray',
-            }}
-          >
-            {new Date(
-              item.lastMessageTime
-            ).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: 'gray',
+                    marginTop: 3,
+                  }}
+                >
+                  {item.lastMessage}
+                </Text>
+                {item.unreadCount > 0 && (
+                  <View
+                    style={{
+                      backgroundColor:
+                        '#25D366',
+                      minWidth: 22,
+                      height: 22,
+                      borderRadius: 11,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      marginTop: 5,
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: 'white',
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {item.unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {item.lastMessageTime && (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: 'gray',
+                  }}
+                >
+                  {new Date(
+                    item.lastMessageTime
+                  ).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
         )}
-      </View>
-    </TouchableOpacity>
-  )}
-/>
-  </View>
+      />
+    </View>
   );
 }

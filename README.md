@@ -171,6 +171,14 @@ Create a `.env` file:
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+Copy .env.example and rename it to .env
+
+
+ Add your Supabase credentials
+
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
 
 ---
 
